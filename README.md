@@ -7,5 +7,5 @@ This utility is designed to import data from [Strava API v3](https://developers.
 
 ## Notes
 
-* Data for rows with a white ![#ffffff](https://via.placeholder.com/15/ffffff/ffffff.png) `#ffffff` Type column will not be synced. White type columns are assumed to be Off days. 
-* Heart rate data will be added to each lap interval if the Type column is marked with the hex color code ![#c27ba0](https://via.placeholder.com/15/c27ba0/c27ba0.png) `#c27ba0`
+* Log rows with a Type column background of ![#ffffff](https://via.placeholder.com/15/ffffff/ffffff.png) `#ffffff` (white) will not be synced from Strava. White type columns are assumed to be off days. 
+* Heart rate data will be added to each lap interval if the Type column is marked with the color code ![#c27ba0](https://via.placeholder.com/15/c27ba0/c27ba0.png) `#c27ba0`
