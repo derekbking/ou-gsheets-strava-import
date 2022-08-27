@@ -1,5 +1,6 @@
 const METERS_TO_MILE = 1609.34
 const CELSIUS_TO_FAHRENHEIT_RATIO = 9 / 5;
+
 const WEATHER_API_KEY = "bde49a5a6b5c4e4ea69182155222508";
 
 const colors = {
@@ -13,13 +14,14 @@ const colors = {
 const trackedColumns = {
   Type: "Type",
   Mileage: "Distance",
-  Runs: "SSRuns",
+  Runs: "Activity Distance",
   Date: "Date",
   Cadence: "Cadence",
   Elevation: "Elevation Change",
   Pace: "Average Pace",
   HeartRate: "Average Heart Rate",
-  LapData: "Laps",
+  // LapData: "Laps",
+  RawLapData: "RawLapData",
   Temperature: "Temperature",
   MovingTime: "Total Moving Time",
   Wind: "Wind",
@@ -28,11 +30,11 @@ const trackedColumns = {
 
 const startRowIndex = 4;
 const ss = SpreadsheetApp.getActiveSpreadsheet();
-const sheet = ss.getSheetByName("Derek")
+const sheet = ss.getActiveSheet();
 
 // Create toolbar dropdown items
 function onOpen() {
-  const service = getStravaService();
+  const service = getStravaService(sheet.getName());
 
   var ui = SpreadsheetApp.getUi();
 
@@ -49,6 +51,37 @@ function onOpen() {
   }
 }
 
+function viewSplits() {
+  const [colNameToIndex, indexToColName] = getColumnMap();
+  const cell = sheet.getActiveCell();
+  const splitData = JSON.parse(getCellData(cell.getRowIndex(), colNameToIndex.get(trackedColumns.RawLapData) + 1));
+
+  var html = HtmlService.createHtmlOutput(`
+<div style='display: flex; gap: 2rem; flex-direction: column; font-family: "Google Sans",Roboto,RobotoDraft,Helvetica,Arial,sans-serif;'>${splitData.map((activityLaps, activityIndex) => {
+    return `
+<div>
+<h3>Activity ${(activityIndex + 1).toString()}</h3>
+<table style='width: 100%;'>
+  <tr style="text-align: left; background-color: #f7f7fa;">
+    <th>Lap</th>
+    <th>Distance</th>
+    <th>Time</th>
+    <th>Pace</th>
+    <th>Elevation Gain</th>
+    <th>HR</th>
+  </tr>
+  ${activityLaps.map((lap, index) => {
+    return `<tr><td style="border-bottom: 1px solid #f0f0f5;">${(index + 1).toString()}</td><td style="border-bottom: 1px solid #f0f0f5;">${metersToMiles(lap.distance)}</td><td style="border-bottom: 1px solid #f0f0f5;">${durationToTime(lap.moving_time)}</td><td style="border-bottom: 1px solid #f0f0f5;">${speedToPace(lap.average_speed)}</td><td style="border-bottom: 1px solid #f0f0f5;">${lap.total_elevation_gain.toFixed(1)} ft</td><td style="border-bottom: 1px solid #f0f0f5;">${lap.average_heartrate.toFixed(1)}</td></tr>`
+  }).join("\n")}
+</table>
+</div>`
+  }).join("\n")}
+</div>`)
+      .setWidth(900)
+      .setHeight(500);
+    SpreadsheetApp.getUi().showModalDialog(html, 'Splits');
+}
+
 function getCellData(rowIndex, colIndex) {
   var cell = sheet.getRange(rowIndex, colIndex, 1, 1);
   return cell.getValues();
@@ -60,12 +93,12 @@ function setCellData(rowIndex, colIndex, value) {
 }
 
 function updateSheet() {
-  const service = getStravaService();
+  const service = getStravaService(sheet.getName());
 
   if (!service.hasAccess()) {
     Logger.log("User not logged in. Started authorization flow.")
     // open this url to gain authorization from github
-    var authorizationUrl = service.getAuthorizationUrl();
+    var authorizationUrl = service.getAuthorizationUrl({sheetName: sheet.getName()});
 
     var html = HtmlService.createHtmlOutput(`<p style='font-family: "Google Sans",Roboto,RobotoDraft,Helvetica,Arial,sans-serif;'>Click the link to complete authentication with Strava.</p><a target="_blank" href="${authorizationUrl}" style='padding: 1rem; background-color: #fc4c01; display: block; border-radius: 5px; text-align: center; color: white; font-family: "Google Sans",Roboto,RobotoDraft,Helvetica,Arial,sans-serif; text-decoration: none;'>Continue to Strava</a>`)
       .setWidth(400)
@@ -74,39 +107,26 @@ function updateSheet() {
     return;
   }
 
-  var columnHeaders = sheet.getRange(1, 1, 2, sheet.getLastColumn());
-  var [colNameToIndex, indexToColName] = [
-    ...columnHeaders.getValues()[0],
-    ...columnHeaders.getValues()[1],
-  ].reduce(
-    (acc, cell, index) => {
-      var [tmpColNameToIndex, tmpIndexToColName] = acc;
-      if (Object.values(trackedColumns).includes(cell)) {
-        tmpColNameToIndex.set(cell, index % sheet.getLastColumn());
-        tmpIndexToColName.set(index % sheet.getLastColumn(), cell);
-      }
+  Logger.log("Getting column indexes...");
+  const [colNameToIndex, indexToColName] = getColumnMap();
 
-      return acc;
-    },
-    [new Map(), new Map()]
-  );
-
-  // Print colNameToIndex
-  Logger.log(JSON.stringify(Array.from(colNameToIndex.entries())));
-  // Print indexToColName
-  Logger.log(JSON.stringify(Array.from(indexToColName.entries())));
-
+  Logger.log("Reading log data...");
   var logData = sheet.getRange(
     startRowIndex,
-    1,
+    Array.from(indexToColName.keys()).reduce((acc, index) => {
+      return index < acc ? index : acc
+    }, [sheet.getLastColumn()]),
     sheet.getLastRow() - (startRowIndex - 1),
     sheet.getLastColumn()
   );
+  var logColors = sheet.getRange(startRowIndex, colNameToIndex.get(trackedColumns.Type) + 1, sheet.getLastRow() - (startRowIndex - 1), 1).getBackgrounds()
+  Logger.log("Parsing log data...");
   var parsedDataMap = logData.getValues().reduce((acc, row, rowIndex) => {
-    var color = logData.getCell(rowIndex + 1, colNameToIndex.get(trackedColumns.Type) + 1).getBackground();
+    var color = logColors[rowIndex]
 
     // Do not parse off days.
     if (color == colors.Off) {
+      Logger.log("Found off day: " + rowIndex)
       return acc;
     }
 
@@ -125,7 +145,7 @@ function updateSheet() {
     );
 
     // Only append parsed data if date column was successfully found.
-    if (Object.keys(parsedRow).includes(trackedColumns.Date) && !!parsedRow[trackedColumns.Date]) {
+    if (Object.keys(parsedRow).includes(trackedColumns.Date) && !!parsedRow[trackedColumns.Date] && Object.keys(parsedRow).includes(trackedColumns.Type) && !!parsedRow[trackedColumns.Type]) {
       var date = parsedRow[trackedColumns.Date];
       var dateStr = `${date.getFullYear()}-${(date.getMonth() + 1)
         .toString()
@@ -135,17 +155,24 @@ function updateSheet() {
 
     return acc;
   }, new Map());
+  Logger.log("Finish parsing data");
   var parsedDataRows = Array.from(parsedDataMap.values());
 
   var firstRowIndexMissingData = parsedDataRows.findIndex((row) => {
-    return Object.values(row).some((col) => !col);
+    return Object.entries(row).some(([colName, col]) => !col && colName != "rowIndex");
   });
   var lastRowIndexMissingData =
     parsedDataRows.length -
     1 -
     [...parsedDataRows]
       .reverse()
-      .findIndex((row) => Object.values(row).some((col) => !col));
+      .findIndex((row) => Object.entries(row).some(([colName, col]) => {
+        if (!col && colName != "rowIndex") {
+          Logger.log(`Missing data for ${colName}`);
+          return true
+        }
+        return false
+      }));
   var firstRowDate = new Date(
     parsedDataRows[firstRowIndexMissingData][trackedColumns.Date]
   );
@@ -156,37 +183,50 @@ function updateSheet() {
   var activities;
 
   try {
+    Logger.log(`Getting Strava activities between ${firstRowDate.toLocaleDateString()} to ${lastRowDate.toLocaleDateString()}`)
     activities = getStravaActiviesInRange(service, firstRowDate, lastRowDate);
+    Logger.log(`Got ${activities.length} activities.`)
   } catch (e) {
     var html = HtmlService.createHtmlOutput(`An error has occurred. ${e}`)
       .setWidth(400)
       .setHeight(300);
     SpreadsheetApp.getUi().showModalDialog(html, 'Application Error');
+    return;
   }
 
+  Logger.log("Grouping activities by date...");
   var groupedActivities = groupBy(activities, (activity) => {
     var dateKey = activity.start_date_local.split("T")[0];
 
     return dateKey;
   });
-  Array.from(groupedActivities.entries()).sort((entry, index) => {
+  Logger.log("Begin inserting data to sheet.");
+  Logger.log(JSON.stringify(Array.from(groupedActivities.keys())))
+  var blankLaps = Array.from(groupedActivities.entries()).filter((entry, index) => {
       const [dateKey, activities] = entry;
       var sheetData = parsedDataMap.get(dateKey);
 
       if (!sheetData) {
+        Logger.log("Couldn't find: " + dateKey);
         return -1;
       }
 
-      var cellData = getCellData(sheetData.rowIndex, colNameToIndex.get(trackedColumns.LapData) + 1);
+      var isBlank = sheet.getRange(sheetData.rowIndex, colNameToIndex.get(trackedColumns.RawLapData) + 1, 1, 1).isBlank();
+      return isBlank
+  })
+  var notBlankLaps = Array.from(groupedActivities.entries()).filter((entry, index) => {
+      const [dateKey, activities] = entry;
+      var sheetData = parsedDataMap.get(dateKey);
 
-      Logger.log("Cell Data: " +cellData)
-
-      if (!cellData) {
-        return 1;
-      } else {
+      if (!sheetData) {
+        Logger.log("Couldn't find: " + dateKey);
         return -1;
       }
-    }).forEach((entry, index) => {
+
+      var isBlank = sheet.getRange(sheetData.rowIndex, colNameToIndex.get(trackedColumns.RawLapData) + 1, 1, 1).isBlank();
+      return !isBlank
+  })
+  Array.from([...blankLaps, ...notBlankLaps]).forEach((entry, index) => {
     const [dateKey, activities] = entry;
     Logger.log(`Inserting data for ${dateKey}`)
     var sheetData = parsedDataMap.get(dateKey);
@@ -196,15 +236,12 @@ function updateSheet() {
       return
     }
 
-    Logger.log("Sheet Data: " + sheetData);
-
     var aggregateData = activities.reduce((acc, activity) => {
-      Logger.log(activity)
       var secondPerMeter = Math.pow(activity.average_speed, -1);
       var secondPerMile = secondPerMeter * 1609;
       var cadence = `${Math.round(activity.average_cadence * 2)} spm`;
       var elevation = `${activity.total_elevation_gain} ft`;
-      var avgTemp = `${Math.round(celsiusToFahrenheit(activity.average_temp) * 10) / 10} °F`
+      var avgTemp = `${(Math.round(celsiusToFahrenheit(activity.average_temp) * 10) / 10).toFixed(1)} °F`
       var movingTime = `${durationToTime(activity.moving_time)}`
       var pace = `${Math.trunc(secondPerMile / 60).toString()}:${Math.round(
         secondPerMile % 60
@@ -213,7 +250,7 @@ function updateSheet() {
         .padStart(2, "0")}`;
       var lapData;
       try {
-        if (index <= 7) {
+        if (index <= 8) {
           lapData = getLapData(service, activity.id);
         }
       } catch (e) {
@@ -222,40 +259,44 @@ function updateSheet() {
 
       var weatherData;
       try {
-        if (index <= 7) {
+        var windData = sheet.getRange(sheetData.rowIndex, colNameToIndex.get(trackedColumns.Wind) + 1);
+        var humidityData = sheet.getRange(sheetData.rowIndex, colNameToIndex.get(trackedColumns.Humidity) + 1);
+
+        // if (windData.isBlank() || humidityData.isBlank()) {
           weatherData = getWeather(activity.start_latlng[0], activity.start_latlng[1], new Date(activity.start_date));
-          Logger.log(weatherData)
-        }
+        // }        
       } catch (e) {
         Logger.log(`Unable to retrieve weather data ${e}`)
       }
 
       return {
         totalDistance: activity.distance + (acc.totalDistance ?? 0),
-        runs: [...(acc.runs ?? []), activity.distance],
-        paces: [...(acc.paces ?? []), pace],
-        cadence: [...(acc.cadence ?? []), cadence],
-        elevation: [...(acc.elevation ?? []), elevation],
-        avgTemp: [...(acc.avgTemp ?? []), avgTemp],
-        movingTime: [...(acc.movingTime ?? []), movingTime],
+        runs: [activity.distance, ...(acc.runs ?? [])],
+        paces: [pace, ...(acc.paces ?? [])],
+        cadence: [cadence, ...(acc.cadence ?? [])],
+        elevation: [elevation, ...(acc.elevation ?? [])],
+        avgTemp: [avgTemp, ...(acc.avgTemp ?? [])],
+        movingTime: [movingTime, ...(acc.movingTime ?? [])],
         averageHeartRates: [
-          ...(acc.averageHeartRates ?? []),
           `${Math.round(activity.average_heartrate)} bpm`,
+          ...(acc.averageHeartRates ?? []),
         ],
         lapDataList: [
-          ...(!!lapData ? [lapData] : []),
           ...(acc.lapDataList ?? []),
+          ...(!!lapData ? [lapData] : []),
         ],
         weatherDataList: [
-          ...(!!weatherData ? [weatherData] : []),
           ...(acc.weatherDataList ?? []),
+          ...(!!weatherData ? [weatherData] : []),
         ],
         activityDataList: [
-          // ...(index <= 20 ? [getActivityData(service, activity.id)] : []),
           // ...(acc.activityDataList ?? []),
+          // ...(index <= 20 ? [getActivityData(service, activity.id)] : []),
         ],
       };
     }, {});
+
+    
 
     setCellData(
       sheetData.rowIndex,
@@ -282,13 +323,13 @@ function updateSheet() {
       colNameToIndex.get(trackedColumns.MovingTime) + 1,
       aggregateData.movingTime.join("\n")
     );
-    // setCellData(
-    //   sheetData.rowIndex,
-    //   colNameToIndex.get(trackedColumns.Runs) + 1,
-    //   aggregateData.runs
-    //     .map((run) => `${metersToMiles(run)} mi`)
-    //     .join("\n")
-    // );
+    setCellData(
+      sheetData.rowIndex,
+      colNameToIndex.get(trackedColumns.Runs) + 1,
+      aggregateData.runs
+        .map((run) => `${metersToMiles(run)} mi`)
+        .join("\n")
+    );
     setCellData(
       sheetData.rowIndex,
       colNameToIndex.get(trackedColumns.Pace) + 1,
@@ -310,33 +351,67 @@ function updateSheet() {
       aggregateData.elevation.join("\n")
     );
     if (aggregateData.lapDataList?.length != 0) {
+      // setCellData(
+      //   sheetData.rowIndex,
+      //   colNameToIndex.get(trackedColumns.LapData) + 1,
+      //   aggregateData.lapDataList
+      //     .map((laps) =>
+      //       laps
+      //         .map((lap) => {
+      //           var secondPerMeter = Math.pow(lap.average_speed, -1);
+      //           var secondPerMile = secondPerMeter * 1609;
+      //           var pace = `${Math.trunc(
+      //             secondPerMile / 60
+      //           ).toString()}:${Math.round(secondPerMile % 60)
+      //             .toString()
+      //             .padStart(2, "0")}`;
+
+      //           return `${sheetData.color === colors.Workout ? `${durationToTime(lap.moving_time)} (${lap.distance !== METERS_TO_MILE ? `${metersToMiles(lap.distance)} mi ` : ""}${Math.round(lap.average_heartrate)} bpm)` : `${durationToTime(lap.moving_time)}${lap.distance !== METERS_TO_MILE ? ` (${metersToMiles(lap.distance)} mi)` : ""}`}`;
+      //         })
+      //         .join(", ")
+      //     )
+      //     .join("\n")
+      // );
+
+      // sheet.getRange(sheetData.rowIndex, colNameToIndex.get(trackedColumns.LapButton) + 1).insertCheckboxes();
+      // setCellData(
+      //   sheetData.rowIndex,
+      //   colNameToIndex.get(trackedColumns.LapData) + 1,
+      //   JSON.stringify(aggregateData.lapDataList)
+      // );
+
       setCellData(
         sheetData.rowIndex,
-        colNameToIndex.get(trackedColumns.LapData) + 1,
-        aggregateData.lapDataList
-          .map((laps) =>
-            laps
-              .map((lap) => {
-                var secondPerMeter = Math.pow(lap.average_speed, -1);
-                var secondPerMile = secondPerMeter * 1609;
-                var pace = `${Math.trunc(
-                  secondPerMile / 60
-                ).toString()}:${Math.round(secondPerMile % 60)
-                  .toString()
-                  .padStart(2, "0")}`;
-
-                return `${sheetData.color === colors.Workout ? `${durationToTime(lap.moving_time)} (${lap.distance !== METERS_TO_MILE ? `${metersToMiles(lap.distance)} mi ` : ""}${Math.round(lap.average_heartrate)} bpm)` : `${durationToTime(lap.moving_time)}${lap.distance !== METERS_TO_MILE ? ` (${metersToMiles(lap.distance)} mi)` : ""}`}`;
-              })
-              .join(", ")
-          )
-          .join("\n")
+        colNameToIndex.get(trackedColumns.RawLapData) + 1,
+        JSON.stringify(aggregateData.lapDataList)
       );
     }
   });
 }
 
+function getColumnMap() {
+  var columnHeaders = sheet.getRange(1, 1, 2, sheet.getLastColumn());
+  return [
+    ...columnHeaders.getValues()[0],
+    ...columnHeaders.getValues()[1],
+  ].reduce(
+    (acc, cell, index) => {
+      var [tmpColNameToIndex, tmpIndexToColName] = acc;
+      if (Object.values(trackedColumns).includes(cell)) {
+        tmpColNameToIndex.set(cell, index % sheet.getLastColumn());
+        tmpIndexToColName.set(index % sheet.getLastColumn(), cell);
+      }
+
+      return acc;
+    },
+    [new Map(), new Map()]
+  );
+
+
+}
+
 function logout(service) {
-  var service = getStravaService();
+  var service = getStravaService(sheet.getName());
   service.reset();
 }
 
@@ -353,9 +428,6 @@ function getWeather(lat, lon, start) {
   var response = JSON.parse(UrlFetchApp.fetch(endpoint, options));
 
   return response.forecast.forecastday[0].hour.find(forecaseHour => {
-    Logger.log("Forecast Time: " + forecaseHour.time_epoch);
-    Logger.log("Target Time: " + start.getTime());
-    Logger.log("Diff: " + (Math.abs((forecaseHour.time_epoch * 1000) - start.getTime()) / (1000 * 60 * 60)));
     return Math.abs((forecaseHour.time_epoch * 1000) - start.getTime()) <= 31 * 60 * 1000
   });
 }
@@ -439,6 +511,12 @@ function durationToTime(duration) {
   }
 
   return `${Math.trunc(duration / 60)}:${(duration % 60).toString().padStart(2, "0")}`
+}
+
+function speedToPace(speed) {
+    var secondPerMeter = Math.pow(speed, -1);
+    var secondPerMile = secondPerMeter * 1609;
+    return `${Math.trunc(secondPerMile / 60).toString()}:${Math.round(secondPerMile % 60).toString().padStart(2, "0")}`
 }
 
 function metersToMiles(meters) {
