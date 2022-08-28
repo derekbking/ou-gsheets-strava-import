@@ -2,7 +2,8 @@ const METERS_TO_MILE = 1609.34;
 const CELSIUS_TO_FAHRENHEIT_RATIO = 9 / 5;
 
 const WEATHER_API_KEY = "bde49a5a6b5c4e4ea69182155222508";
-const MAX_LAPS_SYNC = 5;
+const MAX_LAPS_SYNC = 0;
+const MAX_ACTIVITY_SYNC = 5;
 
 const colors = {
   LongRun: "#99ccff",
@@ -22,7 +23,8 @@ const trackedColumns = {
   Pace: "Average Pace",
   HeartRate: "Average Heart Rate",
   // LapData: "Laps",
-  RawLapData: "RawLapData",
+  // RawLapData: "RawLapData",
+  RawActivityData: "RawActivityData",
   Temperature: "Temperature",
   MovingTime: "Total Moving Time",
   Wind: "Wind",
@@ -74,12 +76,14 @@ function updateLogin() {
 function viewSplits() {
   const [colNameToIndex, indexToColName] = getColumnMap(true);
   const cell = sheet.getActiveCell();
-  const splitData = JSON.parse(
+  const activityDataList = JSON.parse(
     getCellData(
       cell.getRowIndex(),
-      colNameToIndex.get(trackedColumns.RawLapData) + 1
+      colNameToIndex.get(trackedColumns.RawActivityData) + 1
     )
-  );
+  ).reverse();
+
+  Logger.log("Data: " + activityDataList);
 
   var html = HtmlService.createHtmlOutput(
     `
@@ -102,12 +106,13 @@ function viewSplits() {
     font-size: 14px;
   }
 </style>
-<div style='display: flex; gap: 2rem; flex-direction: column; font-family: "Google Sans",Roboto,RobotoDraft,Helvetica,Arial,sans-serif;'>${splitData
-      .map((activityLaps, activityIndex) => {
+<div style='display: flex; gap: 2rem; flex-direction: column; font-family: "Google Sans",Roboto,RobotoDraft,Helvetica,Arial,sans-serif;'>${activityDataList
+      .map((activityData, activityIndex) => {
         return `
 <div>
-<h3>Activity ${(activityIndex + 1).toString()}</h3>
-<table style='width: 100%; border-spacing: 0;'>
+<h3>${activityData.name} (${metersToMiles(activityData.distance)} miles) - ${new Date(activityData.start_date).toLocaleTimeString()}</h3>
+${!activityData.laps ? "No lap data available." : ""}
+${!!activityData.laps ? `<table style='width: 100%; border-spacing: 0;'>
   <thead>
     <tr style="text-align: center; background-color: #f7f7fa;">
       <th>Lap</th>
@@ -118,18 +123,18 @@ function viewSplits() {
       <th>HR</th>
     </tr>
   </thead>
-  ${activityLaps
-    .map((lap, index) => {
-      return `<tr><td>${(index + 1).toString()}</td><td>${metersToMiles(
-        lap.distance
-      )}</td><td>${durationToTime(lap.moving_time)}</td><td>${speedToPace(
-        lap.average_speed
-      )}</td><td>${lap.total_elevation_gain.toFixed(
-        1
-      )} ft</td><td>${lap.average_heartrate.toFixed(1)}</td></tr>`;
-    })
-    .join("\n")}
-</table>
+  ${activityData.laps?.map((lap, index) => {
+              return `<tr><td>${(index + 1).toString()}</td><td>${metersToMiles(
+                lap.distance
+              )}</td><td>${durationToTime(lap.moving_time)}</td><td>${speedToPace(
+                lap.average_speed
+              )}</td><td>${lap.total_elevation_gain.toFixed(
+                1
+              )} ft</td><td>${lap.average_heartrate.toFixed(1)}</td></tr>`;
+            })
+            .join("\n")}
+</table>` : ""
+}
 </div>`;
       })
       .join("\n")}
@@ -137,7 +142,7 @@ function viewSplits() {
   )
     .setWidth(900)
     .setHeight(500);
-  SpreadsheetApp.getUi().showModalDialog(html, "Splits");
+  SpreadsheetApp.getUi().showModalDialog(html, `Splits ${new Date(activityDataList[0].start_date).toLocaleDateString()}`);
 }
 
 function getCellData(rowIndex, colIndex) {
@@ -289,7 +294,7 @@ function updateSheet(suppliedSheet) {
   });
   Logger.log("Begin inserting data to sheet.");
   Logger.log(JSON.stringify(Array.from(groupedActivities.keys())));
-  var blankLaps = Array.from(groupedActivities.entries()).filter(
+  var blankActivities = Array.from(groupedActivities.entries()).filter(
     (entry, index) => {
       const [dateKey, activities] = entry;
       var sheetData = parsedDataMap.get(dateKey);
@@ -299,10 +304,10 @@ function updateSheet(suppliedSheet) {
         return -1;
       }
 
-      return !sheetData[trackedColumns.RawLapData];
+      return !sheetData[trackedColumns.RawActivityData];
     }
   );
-  var notBlankLaps = Array.from(groupedActivities.entries()).filter(
+  var notBlankActivities = Array.from(groupedActivities.entries()).filter(
     (entry, index) => {
       const [dateKey, activities] = entry;
       var sheetData = parsedDataMap.get(dateKey);
@@ -312,123 +317,168 @@ function updateSheet(suppliedSheet) {
         return -1;
       }
 
-      return !!sheetData[trackedColumns.RawLapData];
+      return !!sheetData[trackedColumns.RawActivityData];
     }
   );
-  Array.from([...blankLaps, ...notBlankLaps]).forEach((entry, index) => {
-    const [dateKey, activities] = entry;
-    Logger.log(`Inserting data for ${dateKey}`);
-    var sheetData = parsedDataMap.get(dateKey);
+  Array.from([...blankActivities, ...notBlankActivities]).forEach(
+    (entry, index) => {
+      const [dateKey, activities] = entry;
+      Logger.log(`Inserting data for ${dateKey}`);
+      var sheetData = parsedDataMap.get(dateKey);
 
-    if (!sheetData) {
-      Logger.log(
-        `Skipped inserting Strava data for ${dateKey}. No associated row could be found on the sheet. Is the day marked as an off day?`
-      );
-      return;
-    }
-
-    var aggregateData = activities.reduce((acc, activity) => {
-      var secondPerMeter = Math.pow(activity.average_speed, -1);
-      var secondPerMile = secondPerMeter * 1609;
-      var cadence = `${Math.round(activity.average_cadence * 2)} spm`;
-      var elevation = `${activity.total_elevation_gain} ft`;
-      var avgTemp = `${(
-        Math.round(celsiusToFahrenheit(activity.average_temp) * 10) / 10
-      ).toFixed(1)} °F`;
-      var movingTime = `${durationToTime(activity.moving_time)}`;
-      var pace = `${Math.trunc(secondPerMile / 60).toString()}:${Math.round(
-        secondPerMile % 60
-      )
-        .toString()
-        .padStart(2, "0")}`;
-      var lapData;
-      try {
-        if (index <= MAX_LAPS_SYNC) {
-          lapData = getLapData(service, activity.id);
-        }
-      } catch (e) {
-        Logger.log(`Unable to retrieve lap data ${e}`);
+      if (!sheetData) {
+        Logger.log(
+          `Skipped inserting Strava data for ${dateKey}. No associated row could be found on the sheet. Is the day marked as an off day?`
+        );
+        return;
       }
 
-      var weatherData;
-      try {
-        var windData = sheetData[trackedColumns.Wind];
-        var humidityData = sheetData[trackedColumns.Humidity];
-
-        if (!windData || !humidityData) {
-          Logger.log(`Getting weather data for ${dateKey}`);
-          weatherData = getWeather(
-            activity.start_latlng[0],
-            activity.start_latlng[1],
-            new Date(activity.start_date)
-          );
+      var aggregateData = activities.reduce((acc, activity) => {
+        var secondPerMeter = Math.pow(activity.average_speed, -1);
+        var secondPerMile = secondPerMeter * 1609;
+        var cadence = `${Math.round(activity.average_cadence * 2)} spm`;
+        var elevation = `${activity.total_elevation_gain} ft`;
+        var avgTemp = `${(
+          Math.round(celsiusToFahrenheit(activity.average_temp) * 10) / 10
+        ).toFixed(1)} °F`;
+        var movingTime = `${durationToTime(activity.moving_time)}`;
+        var pace = `${Math.trunc(secondPerMile / 60).toString()}:${Math.round(
+          secondPerMile % 60
+        )
+          .toString()
+          .padStart(2, "0")}`;
+        var lapData;
+        try {
+          if (index < MAX_LAPS_SYNC) {
+            lapData = getLapData(service, activity.id);
+          }
+        } catch (e) {
+          Logger.log(`Unable to retrieve lap data ${e}`);
         }
-      } catch (e) {
-        Logger.log(`Unable to retrieve weather data ${e}`);
-      }
 
-      return {
-        totalDistance: activity.distance + (acc.totalDistance ?? 0),
-        runs: [activity.distance, ...(acc.runs ?? [])],
-        paces: [pace, ...(acc.paces ?? [])],
-        cadence: [cadence, ...(acc.cadence ?? [])],
-        elevation: [elevation, ...(acc.elevation ?? [])],
-        avgTemp: [avgTemp, ...(acc.avgTemp ?? [])],
-        movingTime: [movingTime, ...(acc.movingTime ?? [])],
-        averageHeartRates: [
-          `${Math.round(activity.average_heartrate)} bpm`,
-          ...(acc.averageHeartRates ?? []),
-        ],
-        lapDataList: [
-          ...(acc.lapDataList ?? []),
-          ...(!!lapData ? [lapData] : []),
-        ],
-        weatherDataList: [
-          ...(acc.weatherDataList ?? []),
-          ...(!!weatherData ? [weatherData] : []),
-        ],
-        activityDataList: [
-          // ...(acc.activityDataList ?? []),
-          // ...(index <= 20 ? [getActivityData(service, activity.id)] : []),
-        ],
+        var activityData;
+        try {
+          if (index < MAX_ACTIVITY_SYNC) {
+            activityData = getActivityData(service, activity.id);
+            activityData = {
+              name: activityData.name,
+              distance: activityData.distance,
+              moving_time: activityData.moving_time,
+              elapsed_time: activityData.elapsed_time,
+              type: activityData.type,
+              sport_type: activityData.sport_type,
+              start_date: activityData.start_date,
+              start_date_local: activityData.start_date_local,
+              timezone: activityData.timezone,
+              start_latlng: activityData.start_latlng,
+              end_latlng: activityData.end_latlng,
+              average_speed: activityData.average_speed,
+              max_speed: activityData.max_speed,
+              average_cadence: activityData.average_cadence,
+              average_temp: activityData.average_temp,
+              average_heartrate: activityData.average_heartrate,
+              max_heartrate: activityData.max_heartrate,
+              calories: activityData.calories,
+              laps: activityData.laps.map(lap => {
+                return {
+                  elapsed_time: lap.elapsed_time,
+                  start_date: lap.start_date,
+                  distance: lap.distance,
+                  total_elevation_gain: lap.total_elevation_gain,
+                  moving_time: lap.moving_time,
+                  average_speed: lap.average_speed,
+                  average_cadence: lap.average_cadence,
+                  average_heartrate: lap.average_heartrate,
+                  max_heartrate: lap.max_heartrate
+                }
+              })
+            }
+          }
+        } catch (e) {
+          Logger.log(`Unable to retrieve activity data ${e}`);
+        }
+
+        var weatherData;
+        try {
+          var windData = sheetData[trackedColumns.Wind];
+          var humidityData = sheetData[trackedColumns.Humidity];
+
+          if (!windData || !humidityData) {
+            Logger.log(`Getting weather data for ${dateKey}`);
+            weatherData = getWeather(
+              activity.start_latlng[0],
+              activity.start_latlng[1],
+              new Date(activity.start_date)
+            );
+          }
+        } catch (e) {
+          Logger.log(`Unable to retrieve weather data ${e}`);
+        }
+
+        return {
+          totalDistance: activity.distance + (acc.totalDistance ?? 0),
+          runs: [activity.distance, ...(acc.runs ?? [])],
+          paces: [pace, ...(acc.paces ?? [])],
+          cadence: [cadence, ...(acc.cadence ?? [])],
+          elevation: [elevation, ...(acc.elevation ?? [])],
+          avgTemp: [avgTemp, ...(acc.avgTemp ?? [])],
+          movingTime: [movingTime, ...(acc.movingTime ?? [])],
+          averageHeartRates: [
+            `${Math.round(activity.average_heartrate)} bpm`,
+            ...(acc.averageHeartRates ?? []),
+          ],
+          lapDataList: [
+            ...(acc.lapDataList ?? []),
+            ...(!!lapData ? [lapData] : []),
+          ],
+          weatherDataList: [
+            ...(acc.weatherDataList ?? []),
+            ...(!!weatherData ? [weatherData] : []),
+          ],
+          activityDataList: [
+            ...(acc.activityDataList ?? []),
+            ...(!!activityData ? [activityData] : []),
+          ],
+        };
+      }, {});
+
+      var formattedData = {
+        [trackedColumns.Mileage]: metersToMiles(aggregateData.totalDistance),
+        [trackedColumns.Temperature]: aggregateData.avgTemp.join("\n"),
+        [trackedColumns.Wind]: aggregateData.weatherDataList
+          .map((data) => `${data.wind_mph} mph`)
+          .join("\n"),
+        [trackedColumns.Humidity]: aggregateData.weatherDataList
+          .map((data) => `${data.humidity}%`)
+          .join("\n"),
+        [trackedColumns.MovingTime]: aggregateData.movingTime.join("\n"),
+        [trackedColumns.Runs]: aggregateData.runs
+          .map((run) => `${metersToMiles(run)} mi`)
+          .join("\n"),
+        [trackedColumns.Pace]: aggregateData.paces.join("\n"),
+        [trackedColumns.HeartRate]: aggregateData.averageHeartRates.join("\n"),
+        [trackedColumns.Cadence]: aggregateData.cadence.join("\n"),
+        [trackedColumns.Elevation]: aggregateData.elevation.join("\n"),
+        [trackedColumns.RawActivityData]:
+          aggregateData.activityDataList.length !== 0
+            ? JSON.stringify(aggregateData.activityDataList)
+            : undefined,
       };
-    }, {});
 
-    var formattedData = {
-      [trackedColumns.Mileage]: metersToMiles(aggregateData.totalDistance),
-      [trackedColumns.Temperature]: aggregateData.avgTemp.join("\n"),
-      [trackedColumns.Wind]: aggregateData.weatherDataList
-        .map((data) => `${data.wind_mph} mph`)
-        .join("\n"),
-      [trackedColumns.Humidity]: aggregateData.weatherDataList
-        .map((data) => `${data.humidity}%`)
-        .join("\n"),
-      [trackedColumns.MovingTime]: aggregateData.movingTime.join("\n"),
-      [trackedColumns.Runs]: aggregateData.runs
-        .map((run) => `${metersToMiles(run)} mi`)
-        .join("\n"),
-      [trackedColumns.Pace]: aggregateData.paces.join("\n"),
-      [trackedColumns.HeartRate]: aggregateData.averageHeartRates.join("\n"),
-      [trackedColumns.Cadence]: aggregateData.cadence.join("\n"),
-      [trackedColumns.Elevation]: aggregateData.elevation.join("\n"),
-      [trackedColumns.RawLapData]:
-        aggregateData.lapDataList.length !== 0
-          ? JSON.stringify(aggregateData.lapDataList)
-          : undefined,
-    };
+      for (const [key, value] of Object.entries(formattedData)) {
+        if (!value) {
+          Logger.log(`Empty value. Skipping cell update. (${key})`);
+          continue;
+        }
+        if (value === sheetData[key]) {
+          continue;
+        }
 
-    for (const [key, value] of Object.entries(formattedData)) {
-      if (!value) {
-        Logger.log(`Empty value. Skipping cell update. (${key})`);
-        continue;
+        Logger.log(key);
+        setCellData(sheetData.rowIndex, colNameToIndex.get(key) + 1, value);
       }
-      if (value === sheetData[key]) {
-        continue;
-      }
-
-      setCellData(sheetData.rowIndex, colNameToIndex.get(key) + 1, value);
     }
-  });
+  );
 }
 
 function getColumnMap(useCache = false) {
@@ -473,10 +523,10 @@ function getUpdatedColumnMap() {
   Logger.log(JSON.stringify(Array.from(columnMaps[0].entries())));
   Logger.log(
     "Setting Column Map: " +
-      JSON.stringify([
-        Array.from(columnMaps[0].entries()),
-        Array.from(columnMaps[1].entries()),
-      ])
+    JSON.stringify([
+      Array.from(columnMaps[0].entries()),
+      Array.from(columnMaps[1].entries()),
+    ])
   );
   PropertiesService.getScriptProperties().setProperty(
     "column-map",
@@ -496,9 +546,8 @@ function logout(service) {
 // Weather API Functions
 
 function getWeather(lat, lon, start) {
-  var endpoint = `https://api.weatherapi.com/v1/history.json?key=${WEATHER_API_KEY}&q=${lat},${lon}&dt=${
-    start.toISOString().split("T")[0]
-  }`;
+  var endpoint = `https://api.weatherapi.com/v1/history.json?key=${WEATHER_API_KEY}&q=${lat},${lon}&dt=${start.toISOString().split("T")[0]
+    }`;
 
   var options = {
     method: "GET",
@@ -519,9 +568,8 @@ function getWeather(lat, lon, start) {
 
 function getStravaActiviesInRange(service, fromDate, toDate) {
   var endpoint = "https://www.strava.com/api/v3/athlete/activities";
-  var params = `?after=${fromDate.getTime() / 1000}&before=${
-    toDate.getTime() / 1000
-  }&per_page=100`;
+  var params = `?after=${fromDate.getTime() / 1000}&before=${toDate.getTime() / 1000
+    }&per_page=100`;
 
   var headers = {
     Authorization: "Bearer " + service.getAccessToken(),
@@ -543,7 +591,7 @@ function getStravaActiviesInRange(service, fromDate, toDate) {
 }
 
 function getActivityData(service, activityId) {
-  var lapEndpoint = `https://www.strava.com/api/v3/activities/${activityId}`;
+  var activityEndpoint = `https://www.strava.com/api/v3/activities/${activityId}`;
 
   var headers = {
     Authorization: "Bearer " + service.getAccessToken(),
@@ -555,11 +603,13 @@ function getActivityData(service, activityId) {
     muteHttpExceptions: true,
   };
 
+  var response = JSON.parse(UrlFetchApp.fetch(activityEndpoint, options));
+
   if (!!response.errors) {
     throw response.message ?? JSON.stringify(response.errors);
   }
 
-  return JSON.parse(UrlFetchApp.fetch(lapEndpoint, options));
+  return response;
 }
 
 function getLapData(service, activityId) {
