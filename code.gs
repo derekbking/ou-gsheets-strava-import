@@ -1,5 +1,6 @@
 const METERS_TO_MILE = 1609.34;
 const CELSIUS_TO_FAHRENHEIT_RATIO = 9 / 5;
+const RUN_TYPE_KEY = "Run";
 
 const WEATHER_API_KEY = "bde49a5a6b5c4e4ea69182155222508";
 const MAX_LAPS_SYNC = 0;
@@ -47,7 +48,7 @@ function onOpen() {
   // Only show logout button if user is authenticated.
   ui.createMenu("Strava").addItem("Sync Current Tab", "updateSheet").addItem("View Splits", "viewSplits").addToUi();
 
-  
+
 
   ui.createMenu("Admin")
     .addItem("Update Login", "updateLogin")
@@ -372,8 +373,8 @@ function updateSheet(suppliedSheet) {
         }
 
         return {
-          totalDistance: activity.distance + (acc.totalDistance ?? 0),
-          runs: [activity.distance, ...(acc.runs ?? [])],
+          totalDistance: (activity.type === RUN_TYPE_KEY ? activity.distance : 0) + (acc.totalDistance ?? 0),
+          activities: [{ distance: activity.distance, type: activity.type }, ...(acc.activities ?? [])],
           paces: [pace, ...(acc.paces ?? [])],
           cadence: [cadence, ...(acc.cadence ?? [])],
           elevation: [elevation, ...(acc.elevation ?? [])],
@@ -408,6 +409,9 @@ function updateSheet(suppliedSheet) {
       }
 
       var formattedData = {
+        [trackedColumns.Runs]: aggregateData.activities
+          .map((activity) => `${metersToMiles(activity.distance)} mi${activity.type !== RUN_TYPE_KEY ? ` (${activity.type})` : ""}`)
+          .join("\n"),
         [trackedColumns.Mileage]: metersToMiles(aggregateData.totalDistance),
         [trackedColumns.Temperature]: aggregateData.avgTemp.join("\n"),
         [trackedColumns.Wind]: aggregateData.weatherDataList
@@ -417,9 +421,6 @@ function updateSheet(suppliedSheet) {
           .map((data) => `${data.humidity}%`)
           .join("\n"),
         [trackedColumns.MovingTime]: aggregateData.movingTime.join("\n"),
-        [trackedColumns.Runs]: aggregateData.runs
-          .map((run) => `${metersToMiles(run)} mi`)
-          .join("\n"),
         [trackedColumns.Pace]: aggregateData.paces.join("\n"),
         [trackedColumns.HeartRate]: aggregateData.averageHeartRates.join("\n"),
         [trackedColumns.Cadence]: aggregateData.cadence.join("\n"),
@@ -439,7 +440,7 @@ function updateSheet(suppliedSheet) {
       }
     }
   );
-  
+
   Logger.log(`Made a total of ${apiRequests} API requests.`)
 }
 
