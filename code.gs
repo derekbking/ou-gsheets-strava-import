@@ -45,7 +45,9 @@ function onOpen() {
   var ui = SpreadsheetApp.getUi();
 
   // Only show logout button if user is authenticated.
-  ui.createMenu("Strava").addItem("Sync Current Tab", "updateSheet").addToUi();
+  ui.createMenu("Strava").addItem("Sync Current Tab", "updateSheet").addItem("View Splits", "viewSplits").addToUi();
+
+  
 
   ui.createMenu("Admin")
     .addItem("Update Login", "updateLogin")
@@ -184,6 +186,8 @@ function updateSheet(suppliedSheet) {
 
   Logger.log("Getting column indexes...");
   const [colNameToIndex, indexToColName] = getColumnMap(true);
+
+  Logger.log(Array.from(colNameToIndex.entries()))
 
   Logger.log("Reading log data...");
   var logData = sheet.getRange(
@@ -460,7 +464,7 @@ function getCachedColumnMap() {
 }
 
 function getUpdatedColumnMap() {
-  var columnHeaders = sheet.getRange(1, 1, 2, sheet.getLastColumn());
+  var columnHeaders = sheet.getRange(1, 1, 2, sheet.getLastColumn() + 1);
 
   var columnMaps = [
     ...columnHeaders.getValues()[0],
@@ -469,8 +473,8 @@ function getUpdatedColumnMap() {
     (acc, cell, index) => {
       var [tmpColNameToIndex, tmpIndexToColName] = acc;
       if (Object.values(trackedColumns).includes(cell)) {
-        tmpColNameToIndex.set(cell, index % sheet.getLastColumn());
-        tmpIndexToColName.set(index % sheet.getLastColumn(), cell);
+        tmpColNameToIndex.set(cell, index % (sheet.getLastColumn() + 1));
+        tmpIndexToColName.set(index % (sheet.getLastColumn() + 1), cell);
       }
 
       return acc;
