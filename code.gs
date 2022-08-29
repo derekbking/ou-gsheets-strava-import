@@ -3,7 +3,7 @@ const CELSIUS_TO_FAHRENHEIT_RATIO = 9 / 5;
 
 const WEATHER_API_KEY = "bde49a5a6b5c4e4ea69182155222508";
 const MAX_LAPS_SYNC = 0;
-const MAX_ACTIVITY_SYNC = 5;
+const MAX_ACTIVITY_SYNC = 15;
 
 const colors = {
   LongRun: "#99ccff",
@@ -34,6 +34,9 @@ const trackedColumns = {
 const startRowIndex = 4;
 const ss = SpreadsheetApp.getActiveSpreadsheet();
 let sheet = ss.getActiveSheet();
+
+const MAX_API_REQUESTS = 4;
+let apiRequests = 0;
 
 // Create toolbar dropdown items
 function onOpen() {
@@ -83,8 +86,6 @@ function viewSplits() {
     )
   ).reverse();
 
-  Logger.log("Data: " + activityDataList);
-
   var html = HtmlService.createHtmlOutput(
     `
 <style>
@@ -124,17 +125,17 @@ ${!!activityData.laps ? `<table style='width: 100%; border-spacing: 0;'>
     </tr>
   </thead>
   ${activityData.laps?.map((lap, index) => {
-              return `<tr><td>${(index + 1).toString()}</td><td>${metersToMiles(
-                lap.distance
-              )}</td><td>${durationToTime(lap.moving_time)}</td><td>${speedToPace(
-                lap.average_speed
-              )}</td><td>${lap.total_elevation_gain.toFixed(
-                1
-              )} ft</td><td>${lap.average_heartrate.toFixed(1)}</td></tr>`;
-            })
-            .join("\n")}
+          return `<tr><td>${(index + 1).toString()}</td><td>${metersToMiles(
+            lap.distance
+          )}</td><td>${durationToTime(lap.moving_time)}</td><td>${speedToPace(
+            lap.average_speed
+          )}</td><td>${lap.total_elevation_gain.toFixed(
+            1
+          )} ft</td><td>${lap.average_heartrate.toFixed(1)}</td></tr>`;
+        })
+              .join("\n")}
 </table>` : ""
-}
+          }
 </div>`;
       })
       .join("\n")}
@@ -160,6 +161,7 @@ function updateAllSheets() {
     Logger.log("Updating sheet: " + currentSheet.getName());
     updateSheet(currentSheet);
   }
+  Logger.log(`Made a total of ${apiRequests} API requests.`)
 }
 
 function updateCurrentSheet() {
@@ -347,56 +349,6 @@ function updateSheet(suppliedSheet) {
         )
           .toString()
           .padStart(2, "0")}`;
-        var lapData;
-        try {
-          if (index < MAX_LAPS_SYNC) {
-            lapData = getLapData(service, activity.id);
-          }
-        } catch (e) {
-          Logger.log(`Unable to retrieve lap data ${e}`);
-        }
-
-        var activityData;
-        try {
-          if (index < MAX_ACTIVITY_SYNC) {
-            activityData = getActivityData(service, activity.id);
-            activityData = {
-              name: activityData.name,
-              distance: activityData.distance,
-              moving_time: activityData.moving_time,
-              elapsed_time: activityData.elapsed_time,
-              type: activityData.type,
-              sport_type: activityData.sport_type,
-              start_date: activityData.start_date,
-              start_date_local: activityData.start_date_local,
-              timezone: activityData.timezone,
-              start_latlng: activityData.start_latlng,
-              end_latlng: activityData.end_latlng,
-              average_speed: activityData.average_speed,
-              max_speed: activityData.max_speed,
-              average_cadence: activityData.average_cadence,
-              average_temp: activityData.average_temp,
-              average_heartrate: activityData.average_heartrate,
-              max_heartrate: activityData.max_heartrate,
-              calories: activityData.calories,
-              laps: activityData.laps.map(lap => {
-                return {
-                  elapsed_time: lap.elapsed_time,
-                  start_date: lap.start_date,
-                  distance: lap.distance,
-                  total_elevation_gain: lap.total_elevation_gain,
-                  moving_time: lap.moving_time,
-                  average_speed: lap.average_speed,
-                  average_cadence: lap.average_cadence,
-                  average_heartrate: lap.average_heartrate,
-                  max_heartrate: lap.max_heartrate
-                }
-              })
-            }
-          }
-        } catch (e) {
-          Logger.log(`Unable to retrieve activity data ${e}`);
-        }
 
         var weatherData;
         try {
@@ -427,20 +379,29 @@ function updateSheet(suppliedSheet) {
             `${Math.round(activity.average_heartrate)} bpm`,
             ...(acc.averageHeartRates ?? []),
           ],
-          lapDataList: [
-            ...(acc.lapDataList ?? []),
-            ...(!!lapData ? [lapData] : []),
-          ],
           weatherDataList: [
             ...(acc.weatherDataList ?? []),
             ...(!!weatherData ? [weatherData] : []),
           ],
-          activityDataList: [
-            ...(acc.activityDataList ?? []),
-            ...(!!activityData ? [activityData] : []),
-          ],
+          activityIds: [
+            ...(acc.activityIds ?? []),
+            activity.id,
+          ]
         };
       }, {});
+
+      var rawActivityDataList;
+      try {
+        var rawData = sheetData[trackedColumns.RawActivityData];
+        Logger.log(`Activity Id Len: ${aggregateData.activityIds.length}, Raw Data Len: ${!!rawData ? JSON.parse(rawData).length : 0}`);
+        rawActivityDataList = aggregateData.activityIds.length !== (!!rawData ? JSON.parse(rawData).length : 0)
+          ? apiRequests <= MAX_API_REQUESTS ? aggregateData.activityIds.map(activityId => {
+            return getActivityData(service, activityId);
+          }) : undefined
+          : undefined
+      } catch (e) {
+        Logger.log(`Get activity details exception. ${e}`);
+      }
 
       var formattedData = {
         [trackedColumns.Mileage]: metersToMiles(aggregateData.totalDistance),
@@ -459,26 +420,23 @@ function updateSheet(suppliedSheet) {
         [trackedColumns.HeartRate]: aggregateData.averageHeartRates.join("\n"),
         [trackedColumns.Cadence]: aggregateData.cadence.join("\n"),
         [trackedColumns.Elevation]: aggregateData.elevation.join("\n"),
-        [trackedColumns.RawActivityData]:
-          aggregateData.activityDataList.length !== 0
-            ? JSON.stringify(aggregateData.activityDataList)
-            : undefined,
+        [trackedColumns.RawActivityData]: JSON.stringify(rawActivityDataList),
       };
 
       for (const [key, value] of Object.entries(formattedData)) {
         if (!value) {
-          Logger.log(`Empty value. Skipping cell update. (${key})`);
           continue;
         }
         if (value === sheetData[key]) {
           continue;
         }
 
-        Logger.log(key);
         setCellData(sheetData.rowIndex, colNameToIndex.get(key) + 1, value);
       }
     }
   );
+  
+  Logger.log(`Made a total of ${apiRequests} API requests.`)
 }
 
 function getColumnMap(useCache = false) {
@@ -492,7 +450,7 @@ function getColumnMap(useCache = false) {
 function getCachedColumnMap() {
   const scriptProperties = PropertiesService.getScriptProperties();
 
-  var cachedData = JSON.parse(scriptProperties.getProperty("column-map"));
+  var cachedData = JSON.parse(scriptProperties.getProperty(`column-map-${sheet.getName}`));
 
   if (!cachedData) {
     return;
@@ -520,16 +478,8 @@ function getUpdatedColumnMap() {
     [new Map(), new Map()]
   );
 
-  Logger.log(JSON.stringify(Array.from(columnMaps[0].entries())));
-  Logger.log(
-    "Setting Column Map: " +
-    JSON.stringify([
-      Array.from(columnMaps[0].entries()),
-      Array.from(columnMaps[1].entries()),
-    ])
-  );
   PropertiesService.getScriptProperties().setProperty(
-    "column-map",
+    `column-map-${sheet.getName}`,
     JSON.stringify([
       Array.from(columnMaps[0].entries()),
       Array.from(columnMaps[1].entries()),
@@ -582,6 +532,7 @@ function getStravaActiviesInRange(service, fromDate, toDate) {
   };
 
   var response = JSON.parse(UrlFetchApp.fetch(endpoint + params, options));
+  apiRequests++;
 
   if (!!response.errors) {
     throw response.message ?? JSON.stringify(response.errors);
@@ -591,6 +542,7 @@ function getStravaActiviesInRange(service, fromDate, toDate) {
 }
 
 function getActivityData(service, activityId) {
+  Logger.log(`Get activity data ${activityId}`)
   var activityEndpoint = `https://www.strava.com/api/v3/activities/${activityId}`;
 
   var headers = {
@@ -603,13 +555,48 @@ function getActivityData(service, activityId) {
     muteHttpExceptions: true,
   };
 
-  var response = JSON.parse(UrlFetchApp.fetch(activityEndpoint, options));
+  var res = UrlFetchApp.fetch(activityEndpoint, options);
+  apiRequests++;
 
-  if (!!response.errors) {
-    throw response.message ?? JSON.stringify(response.errors);
+  if (!!res.errors) {
+    throw res.message ?? JSON.stringify(res.errors);
   }
 
-  return response;
+  var activityData = JSON.parse(res);
+
+  return {
+    name: activityData.name,
+    distance: activityData.distance,
+    moving_time: activityData.moving_time,
+    elapsed_time: activityData.elapsed_time,
+    type: activityData.type,
+    sport_type: activityData.sport_type,
+    start_date: activityData.start_date,
+    start_date_local: activityData.start_date_local,
+    timezone: activityData.timezone,
+    start_latlng: activityData.start_latlng,
+    end_latlng: activityData.end_latlng,
+    average_speed: activityData.average_speed,
+    max_speed: activityData.max_speed,
+    average_cadence: activityData.average_cadence,
+    average_temp: activityData.average_temp,
+    average_heartrate: activityData.average_heartrate,
+    max_heartrate: activityData.max_heartrate,
+    calories: activityData.calories,
+    laps: activityData.laps?.map(lap => {
+      return {
+        elapsed_time: lap.elapsed_time,
+        start_date: lap.start_date,
+        distance: lap.distance,
+        total_elevation_gain: lap.total_elevation_gain,
+        moving_time: lap.moving_time,
+        average_speed: lap.average_speed,
+        average_cadence: lap.average_cadence,
+        average_heartrate: lap.average_heartrate,
+        max_heartrate: lap.max_heartrate
+      }
+    })
+  };
 }
 
 function getLapData(service, activityId) {
@@ -626,6 +613,7 @@ function getLapData(service, activityId) {
   };
 
   var response = JSON.parse(UrlFetchApp.fetch(lapEndpoint, options));
+  apiRequests++;
 
   if (!!response.errors) {
     throw response.message ?? JSON.stringify(response.errors);
@@ -661,7 +649,7 @@ function speedToPace(speed) {
 }
 
 function metersToMiles(meters) {
-  return Math.round((meters / METERS_TO_MILE) * 100) / 100;
+  return (Math.round((meters / METERS_TO_MILE) * 100) / 100).toFixed(2);
 }
 
 function groupBy(list, keyGetter) {
