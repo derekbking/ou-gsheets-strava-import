@@ -341,19 +341,13 @@ function updateSheet(suppliedSheet) {
       }
 
       var aggregateData = activities.reduce((acc, activity) => {
-        var secondPerMeter = Math.pow(activity.average_speed, -1);
-        var secondPerMile = secondPerMeter * 1609;
-        var cadence = `${Math.round(activity.average_cadence * 2)} spm`;
+        var cadence = activity.average_cadence ? `${Math.round(activity.average_cadence * 2)} spm` : "-";
         var elevation = `${activity.total_elevation_gain} ft`;
         var avgTemp = `${(
           Math.round(celsiusToFahrenheit(activity.average_temp) * 10) / 10
         ).toFixed(1)} °F`;
         var movingTime = `${durationToTime(activity.moving_time)}`;
-        var pace = `${Math.trunc(secondPerMile / 60).toString()}:${Math.round(
-          secondPerMile % 60
-        )
-          .toString()
-          .padStart(2, "0")}`;
+        var pace = speedToPace(activity.average_speed);
 
         var weatherData;
         try {
@@ -375,13 +369,14 @@ function updateSheet(suppliedSheet) {
         return {
           totalDistance: (activity.type === RUN_TYPE_KEY ? activity.distance : 0) + (acc.totalDistance ?? 0),
           activities: [{ distance: activity.distance, type: activity.type }, ...(acc.activities ?? [])],
+          activityData: [activity, ...(acc.activityData ?? [])],
           paces: [pace, ...(acc.paces ?? [])],
           cadence: [cadence, ...(acc.cadence ?? [])],
           elevation: [elevation, ...(acc.elevation ?? [])],
           avgTemp: [avgTemp, ...(acc.avgTemp ?? [])],
           movingTime: [movingTime, ...(acc.movingTime ?? [])],
           averageHeartRates: [
-            `${Math.round(activity.average_heartrate)} bpm`,
+            activity.average_heartrate ? `${Math.round(activity.average_heartrate)} bpm` : "-",
             ...(acc.averageHeartRates ?? []),
           ],
           weatherDataList: [
@@ -398,7 +393,6 @@ function updateSheet(suppliedSheet) {
       var rawActivityDataList;
       try {
         var rawData = sheetData[trackedColumns.RawActivityData];
-        Logger.log(`Activity Id Len: ${aggregateData.activityIds.length}, Raw Data Len: ${!!rawData ? JSON.parse(rawData).length : 0}`);
         rawActivityDataList = aggregateData.activityIds.length !== (!!rawData ? JSON.parse(rawData).length : 0)
           ? apiRequests <= MAX_API_REQUESTS ? aggregateData.activityIds.map(activityId => {
             return getActivityData(service, activityId);
@@ -408,17 +402,38 @@ function updateSheet(suppliedSheet) {
         Logger.log(`Get activity details exception. ${e}`);
       }
 
+      var weatherDataList;
+      try {
+        var windDataLen = sheetData[trackedColumns.Wind].toString().split("\n").filter(item => !!item).length;
+        var humidityDataLen = sheetData[trackedColumns.Humidity].toString().split("\n").filter(item => !!item).length;
+        var temperatureDataLen = sheetData[trackedColumns.Temperature].toString().split("\n").filter(item => !!item).length;
+
+        if ([windDataLen, humidityDataLen, temperatureDataLen].some(length => aggregateData.activityData.length !== length)) {
+          weatherDataList = aggregateData.activityData.map(activity => {
+            if (!activity.start_latlng || !activity.start_latlng[0] || !activity.start_latlng[1]) {
+              return "N/A";
+            }
+
+            return getWeather(
+              activity.start_latlng[0],
+              activity.start_latlng[1],
+              new Date(activity.start_date)
+            );
+          })
+        }
+      } catch (e) {
+        Logger.log(`Get weather details exception. ${e}`);
+      }
+
       var formattedData = {
         [trackedColumns.Runs]: aggregateData.activities
           .map((activity) => `${metersToMiles(activity.distance)} mi${activity.type !== RUN_TYPE_KEY ? ` (${activity.type})` : ""}`)
           .join("\n"),
         [trackedColumns.Mileage]: metersToMiles(aggregateData.totalDistance),
         [trackedColumns.Temperature]: aggregateData.avgTemp.join("\n"),
-        [trackedColumns.Wind]: aggregateData.weatherDataList
-          .map((data) => `${data.wind_mph} mph`)
+        [trackedColumns.Wind]: weatherDataList?.map((data) => data.wind_mph ?`${data.wind_mph} mph` : data)
           .join("\n"),
-        [trackedColumns.Humidity]: aggregateData.weatherDataList
-          .map((data) => `${data.humidity}%`)
+        [trackedColumns.Humidity]: weatherDataList?.map((data) => data.humidity ? `${data.humidity}%` : data)
           .join("\n"),
         [trackedColumns.MovingTime]: aggregateData.movingTime.join("\n"),
         [trackedColumns.Pace]: aggregateData.paces.join("\n"),
@@ -637,13 +652,30 @@ function durationToTime(duration) {
   if (duration < 60) {
     return `${duration} sec`;
   }
+  var hours = Math.trunc(duration / 3600);
+  var minutes = Math.trunc((duration % 3600) / 60);
+  var seconds = (duration % 60);
 
-  return `${Math.trunc(duration / 60)}:${(duration % 60)
-    .toString()
-    .padStart(2, "0")}`;
+  var durationParts = new Array();
+
+  if (hours != 0) {
+    durationParts.push(`${hours.toString().padStart(2, "0")}`)
+  }
+
+  if (minutes != 0) {
+    durationParts.push(`${minutes.toString().padStart(2, "0")}`)
+  }
+
+  durationParts.push(`${seconds.toString().padStart(2, "0")}`)
+
+  return durationParts.join(":");
 }
 
 function speedToPace(speed) {
+  if (!speed) {
+    return "-";
+  }
+  
   var secondPerMeter = Math.pow(speed, -1);
   var secondPerMile = secondPerMeter * 1609;
   return `${Math.trunc(secondPerMile / 60).toString()}:${Math.round(
