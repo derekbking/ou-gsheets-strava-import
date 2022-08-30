@@ -440,7 +440,7 @@
                activity.start_latlng[1],
                new Date(activity.start_date_local)
              );
-           });
+           }).map(data => !!data ? data : "Failed.");;
          }
        } catch (e) {
          Logger.log(`Get weather details exception. ${e}`);
