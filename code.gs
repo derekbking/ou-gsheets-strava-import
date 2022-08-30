@@ -16,6 +16,7 @@
    Recovery: "#d9d2e9",
    Easy: "#ccffcc",
    Off: "#ffff00",
+   Off2: "#ffffff",
  };
  
  const trackedColumns = {
@@ -233,7 +234,7 @@
      var color = logColors[rowIndex];
  
      // Do not parse off days.
-     if (color == colors.Off) {
+     if (color == colors.Off || color == colors.Off2) {
        Logger.log("Found off day: " + rowIndex);
        return acc;
      }
