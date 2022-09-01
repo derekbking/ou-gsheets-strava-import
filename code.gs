@@ -10,6 +10,12 @@
  const MAX_LAPS_SYNC = 0;
  const MAX_ACTIVITY_SYNC = 15;
  
+ const SUMMER_START_MONTH = 5;
+ const SUMMER_START_DAY = 12;
+ 
+ const SUMMER_END_MONTH = 8;
+ const SUMMER_END_DAY = 15;
+ 
  const colors = {
    LongRun: "#99ccff",
    Workout: "#c27ba0",
@@ -46,8 +52,6 @@
  
  // Create toolbar dropdown items
  function onOpen() {
-   const service = getStravaService(sheet.getName());
- 
    var ui = SpreadsheetApp.getUi();
  
    // Only show logout button if user is authenticated.
@@ -85,6 +89,62 @@
    }
  }
  
+ function getLoggedInUsers() {
+   Logger.log(OAuth2.getServiceNames(PropertiesService.getScriptProperties()));
+ }
+ 
+ function createTriggerEven() {
+   ScriptApp.newTrigger("updateAllSheets")
+     .timeBased()
+     .atHour(10)
+     .everyDays(1)
+     .create();
+ 
+   ScriptApp.newTrigger("updateAllSheets")
+     .timeBased()
+     .atHour(12)
+     .everyDays(1)
+     .create();
+ 
+   ScriptApp.newTrigger("updateAllSheets")
+     .timeBased()
+     .atHour(16)
+     .everyDays(1)
+     .create();
+ 
+   ScriptApp.newTrigger("updateAllSheets")
+     .timeBased()
+     .atHour(20)
+     .everyDays(1)
+     .create();
+ }
+ 
+ function createTriggerOdd() {
+   ScriptApp.newTrigger("updateAllSheets")
+     .timeBased()
+     .atHour(11)
+     .everyDays(1)
+     .create();
+ 
+   ScriptApp.newTrigger("updateAllSheets")
+     .timeBased()
+     .atHour(13)
+     .everyDays(1)
+     .create();
+ 
+   ScriptApp.newTrigger("updateAllSheets")
+     .timeBased()
+     .atHour(17)
+     .everyDays(1)
+     .create();
+ 
+   ScriptApp.newTrigger("updateAllSheets")
+     .timeBased()
+     .atHour(19)
+     .everyDays(1)
+     .create();
+ }
+ 
  function viewSplits() {
    const [colNameToIndex, indexToColName] = getColumnMap(true);
    const cell = sheet.getActiveCell();
@@ -97,64 +157,64 @@
  
    var html = HtmlService.createHtmlOutput(
      `
-  <style>
-    table {
-      border: 1px solid #dfdfe8;
-    }
-  
-    table td, table th {
-      padding: 6px 20px;
-      border-bottom: 1px solid #dfdfe8;
-    }
-  
-    table tr:last-child td {
-      border-bottom: none;
-    }
-  
-    table tr {
-      text-align: center;
-      font-size: 14px;
-    }
-  </style>
-  <div style='display: flex; gap: 2rem; flex-direction: column; font-family: "Google Sans",Roboto,RobotoDraft,Helvetica,Arial,sans-serif;'>${activityDataList
-    .map((activityData, activityIndex) => {
-      return `
-  <div>
-  <h3>${activityData.name} (${metersToMiles(
-        activityData.distance
-      )} miles) - ${new Date(activityData.start_date).toLocaleTimeString()}</h3>
-  ${!activityData.laps ? "No lap data available." : ""}
-  ${
-    !!activityData.laps
-      ? `<table style='width: 100%; border-spacing: 0;'>
-    <thead>
-      <tr style="text-align: center; background-color: #f7f7fa;">
-        <th>Lap</th>
-        <th>Distance</th>
-        <th>Time</th>
-        <th>Pace</th>
-        <th>Elevation Gain</th>
-        <th>HR</th>
-      </tr>
-    </thead>
-    ${activityData.laps
-      ?.map((lap, index) => {
-        return `<tr><td>${(index + 1).toString()}</td><td>${metersToMiles(
-          lap.distance
-        )}</td><td>${durationToTime(lap.moving_time)}</td><td>${speedToPace(
-          lap.average_speed
-        )}</td><td>${lap.total_elevation_gain?.toFixed(
-          1
-        )} ft</td><td>${lap.average_heartrate?.toFixed(1)}</td></tr>`;
-      })
-      .join("\n")}
-  </table>`
-      : ""
-  }
-  </div>`;
-    })
-    .join("\n")}
-  </div>`
+   <style>
+     table {
+       border: 1px solid #dfdfe8;
+     }
+   
+     table td, table th {
+       padding: 6px 20px;
+       border-bottom: 1px solid #dfdfe8;
+     }
+   
+     table tr:last-child td {
+       border-bottom: none;
+     }
+   
+     table tr {
+       text-align: center;
+       font-size: 14px;
+     }
+   </style>
+   <div style='display: flex; gap: 2rem; flex-direction: column; font-family: "Google Sans",Roboto,RobotoDraft,Helvetica,Arial,sans-serif;'>${activityDataList
+     .map((activityData, activityIndex) => {
+       return `
+   <div>
+   <h3>${activityData.name} (${metersToMiles(
+         activityData.distance
+       )} miles) - ${new Date(activityData.start_date).toLocaleTimeString()}</h3>
+   ${!activityData.laps ? "No lap data available." : ""}
+   ${
+     !!activityData.laps
+       ? `<table style='width: 100%; border-spacing: 0;'>
+     <thead>
+       <tr style="text-align: center; background-color: #f7f7fa;">
+         <th>Lap</th>
+         <th>Distance</th>
+         <th>Time</th>
+         <th>Pace</th>
+         <th>Elevation Gain</th>
+         <th>HR</th>
+       </tr>
+     </thead>
+     ${activityData.laps
+       ?.map((lap, index) => {
+         return `<tr><td>${(index + 1).toString()}</td><td>${metersToMiles(
+           lap.distance
+         )}</td><td>${durationToTime(lap.moving_time)}</td><td>${speedToPace(
+           lap.average_speed
+         )}</td><td>${lap.total_elevation_gain?.toFixed(
+           1
+         )} ft</td><td>${lap.average_heartrate?.toFixed(1)}</td></tr>`;
+       })
+       .join("\n")}
+   </table>`
+       : ""
+   }
+   </div>`;
+     })
+     .join("\n")}
+   </div>`
    )
      .setWidth(900)
      .setHeight(500);
@@ -186,9 +246,9 @@
    updateSheet(sheet);
  }
  
-//  function testUpdateSheet() {
-//    updateSheet(ss.getSheetByName("Nikki"));
-//  }
+  function testUpdateSheet() {
+    updateSheet(ss.getSheetByName("Derek"));
+  }
  
  function updateSheet(suppliedSheet) {
    if (!!suppliedSheet) {
@@ -232,13 +292,7 @@
    Logger.log("Parsing log data...");
    var parsedDataMap = logData.getValues().reduce((acc, row, rowIndex) => {
      var color = logColors[rowIndex];
- 
-     // Do not parse off days.
-     if (color == colors.Off || color == colors.Off2) {
-       Logger.log("Found off day: " + rowIndex);
-       return acc;
-     }
- 
+     
      // Parse cell data for column indexes that we track.
      var parsedRow = row.reduce(
        (acc, col, index) => {
@@ -273,9 +327,10 @@
    var parsedDataRows = Array.from(parsedDataMap.values());
  
    var firstRowIndexMissingData = parsedDataRows.findIndex((row) => {
-     return Object.entries(row).some(
-       ([colName, col]) => !col && colName != "rowIndex"
-     );
+     return true;
+     // return Object.entries(row).some(
+     //   ([colName, col]) => !col && colName != "rowIndex"
+     // );
    });
    var lastRowIndexMissingData =
      parsedDataRows.length -
@@ -352,10 +407,33 @@
        Logger.log(`Inserting data for ${dateKey}`);
        var sheetData = parsedDataMap.get(dateKey);
  
+       const splitDate = dateKey.split("-");
+       const year = parseInt(splitDate[0]);
+       const month = parseInt(splitDate[1]);
+       const day = parseInt(splitDate[2]);
+       const currentDay = new Date(year, month - 1, day);
+       const startSummerDate = new Date(year, SUMMER_START_MONTH - 1, SUMMER_START_DAY);
+       const endSummerDate = new Date(year, SUMMER_END_MONTH - 1, SUMMER_END_DAY);
+ 
        if (!sheetData) {
          Logger.log(
            `Skipped inserting Strava data for ${dateKey}. No associated row could be found on the sheet. Is the day marked as an off day?`
          );
+         return;
+       }
+ 
+       var isSummerDay = currentDay.getTime() >= startSummerDate.getTime() && currentDay.getTime() <= endSummerDate.getTime()
+       var isOffDay = sheetData.color == colors.Off || sheetData.color == colors.Off2
+       if (isSummerDay || isOffDay) {
+         for (let key of Object.values(trackedColumns)) {
+           if (key === trackedColumns.Date || key === trackedColumns.Type) {
+             continue;
+           }
+           
+           setCellData(sheetData.rowIndex, colNameToIndex.get(key) + 1, "");
+         }
+ 
+         Logger.log(`Clearing data for ${dateKey}. ${isOffDay ? "Off day detected." : ""}${isSummerDay ? "Summer day detected." : ""}.`);
          return;
        }
  
@@ -426,21 +504,23 @@
              (length) => aggregateData.activityData.length !== length
            )
          ) {
-           weatherDataList = aggregateData.activityData.map((activity) => {
-             if (
-               !activity.start_latlng ||
-               !activity.start_latlng[0] ||
-               !activity.start_latlng[1]
-             ) {
-               return "N/A";
-             }
+           weatherDataList = aggregateData.activityData
+             .map((activity) => {
+               if (
+                 !activity.start_latlng ||
+                 !activity.start_latlng[0] ||
+                 !activity.start_latlng[1]
+               ) {
+                 return "N/A";
+               }
  
-             return getWeather(
-               activity.start_latlng[0],
-               activity.start_latlng[1],
-               new Date(activity.start_date_local)
-             );
-           }).map(data => !!data ? data : "Failed.");;
+               return getWeather(
+                 activity.start_latlng[0],
+                 activity.start_latlng[1],
+                 new Date(activity.start_date_local)
+               );
+             })
+             .map((data) => (!!data ? data : "Failed."));
          }
        } catch (e) {
          Logger.log(`Get weather details exception. ${e}`);
