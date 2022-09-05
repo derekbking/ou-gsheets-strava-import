@@ -426,7 +426,7 @@
  
        var isSummerDay = currentDay.getTime() >= startSummerDate.getTime() && currentDay.getTime() <= endSummerDate.getTime()
        var isOffDay = sheetData.color == colors.Off || sheetData.color == colors.Off2
-       if ((isSummerDay || isOffDay) && SHEETS_EXEMPT_FROM_OFF_DAYS.includes(sheet.getName())) {
+       if ((isSummerDay || isOffDay) && !SHEETS_EXEMPT_FROM_OFF_DAYS.includes(sheet.getName())) {
          for (let key of Object.values(trackedColumns)) {
            if (key === trackedColumns.Date || key === trackedColumns.Type) {
              continue;
