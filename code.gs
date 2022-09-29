@@ -345,6 +345,7 @@
  function setCellData(rowIndex, colIndex, value) {
    var cell = sheet.getRange(rowIndex, colIndex, 1, 1);
    cell.setValues([[value]]);
+   cell.setHorizontalAlignment("left");
  }
  
  function updateAllSheets() {
@@ -774,7 +775,7 @@
    };
  
    var response = JSON.parse(UrlFetchApp.fetch(endpoint, options));
- 
+
    return response.forecast.forecastday[0].hour.find((forecaseHour) => {
      return (
        Math.abs(forecaseHour.time_epoch * 1000 - start.getTime()) <=
@@ -789,7 +790,7 @@
    var endpoint = "https://www.strava.com/api/v3/athlete/activities";
    var params = `?after=${fromDate.getTime() / 1000}&before=${
      toDate.getTime() / 1000
-   }&per_page=100`;
+   }&per_page=200`;
  
    var headers = {
      Authorization: "Bearer " + service.getAccessToken(),
