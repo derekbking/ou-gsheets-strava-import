@@ -374,6 +374,7 @@ function updateAllSheets() {
     } catch (e) {
       Logger.log(`Failed to update sheet ${currentSheet.getName()}: ${e}`);
     }
+    apiRequests = 0;
     index++;
   }
   Logger.log(`Made a total of ${apiRequests} API requests.`);
@@ -400,6 +401,7 @@ function updateSheet(suppliedSheet) {
         updateLogin();
       } catch (e) {
         Logger.log(`Error initializing login set for ${sheet.getName()} (was this run by automation?): ${e}`);
+        return;
       }
     }
     return;
@@ -638,6 +640,7 @@ function updateSheet(suppliedSheet) {
           (!!rawData ? JSON.parse(rawData).length : 0)
             ? apiRequests <= MAX_API_REQUESTS
               ? aggregateData.activityIds.map((activityId) => {
+                  Logger.log(`Getting activity data for Activity ID: ${activityId} on ${dateKey}`);
                   return getActivityData(service, activityId);
                 })
               : undefined
