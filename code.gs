@@ -149,7 +149,7 @@ function createTriggerOdd() {
 }
 
 function viewSplits() {
-  const [colNameToIndex, indexToColName] = getColumnMap(true);
+  const [colNameToIndex, indexToColName] = getColumnMap(false);
   const cell = sheet.getActiveCell();
   const activityDataList = JSON.parse(
     getCellData(
@@ -160,186 +160,186 @@ function viewSplits() {
 
   var html = HtmlService.createHtmlOutput(
     `
-     <script>
-       function switchTab(activityIndex, tab) {
-         const splits = document.getElementById(\`content-splits-\${activityIndex}\`)
-         const splitsTab = document.getElementById(\`tab-splits-\${activityIndex}\`)
-         const laps = document.getElementById(\`content-laps-\${activityIndex}\`)
-         const lapsTab = document.getElementById(\`tab-laps-\${activityIndex}\`)
-         if (tab == 'splits') {
-           splits.classList.remove('hidden')
-           splitsTab.classList.add('active')
-           laps.classList.add('hidden')
-           lapsTab.classList.remove('active')
-         } else {
-           splits.classList.add('hidden')
-           splitsTab.classList.remove('active')
-           laps.classList.remove('hidden')
-           lapsTab.classList.add('active')
-         }
+      <script>
+        function switchTab(activityIndex, tab) {
+          const splits = document.getElementById(\`content-splits-\${activityIndex}\`)
+          const splitsTab = document.getElementById(\`tab-splits-\${activityIndex}\`)
+          const laps = document.getElementById(\`content-laps-\${activityIndex}\`)
+          const lapsTab = document.getElementById(\`tab-laps-\${activityIndex}\`)
+          if (tab == 'splits') {
+            splits.classList.remove('hidden')
+            splitsTab.classList.add('active')
+            laps.classList.add('hidden')
+            lapsTab.classList.remove('active')
+          } else {
+            splits.classList.add('hidden')
+            splitsTab.classList.remove('active')
+            laps.classList.remove('hidden')
+            lapsTab.classList.add('active')
+          }
+        }
+        console.log("Test hello");
+      </script>
+     <style>
+       table {
+         border: 1px solid #dfdfe8;
        }
-       console.log("Test hello");
-     </script>
-    <style>
-      table {
-        border: 1px solid #dfdfe8;
+  
+  
+      .tab-button {
+        cursor: pointer;
+        background: none;
+        outline: none;
+        border: none;
+        position: relative;
+        padding-bottom: 5px;
+        transition: color 400ms ease;
       }
- 
- 
-     .tab-button {
-       cursor: pointer;
-       background: none;
-       outline: none;
-       border: none;
-       position: relative;
-       padding-bottom: 5px;
-       transition: color 400ms ease;
-     }
- 
-     .tab-button:focus {
-       outline: none;
-     }
- 
-     .tab-button.active {
-       color: hsl(196, 100%, 47%);
-     }
- 
-     .tab-button.active::after {
-       background-color: hsl(196, 100%, 47%);
-     }
- 
-     .tab-button::after {
-       position: absolute;
-       content: "";
-       border-radius: 3px;
-       width: 100%;
-       height: 3px;
-       bottom: 0;
-       left: 0;
-       right: 0;
-       transform: scale(0.6);
-       background-color: hsl(180, 8%, 83%);
-       transition: transform 200ms ease, opacity 400ms ease, background-color 400ms ease;
-       opacity: 0;
-     }
- 
-     .tab-button:hover::after,
-     .tab-button.active::after {
-       transform: scale(1);
-       opacity: 1;
-     }
- 
-      .hidden {
-        display: none;
+  
+      .tab-button:focus {
+        outline: none;
       }
-    
-      table td, table th {
-        padding: 6px 20px;
-        border-bottom: 1px solid #dfdfe8;
+  
+      .tab-button.active {
+        color: hsl(196, 100%, 47%);
       }
-    
-      table tr:last-child td {
-        border-bottom: none;
+  
+      .tab-button.active::after {
+        background-color: hsl(196, 100%, 47%);
       }
-    
-      table tr {
-        text-align: center;
-        font-size: 14px;
+  
+      .tab-button::after {
+        position: absolute;
+        content: "";
+        border-radius: 3px;
+        width: 100%;
+        height: 3px;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        transform: scale(0.6);
+        background-color: hsl(180, 8%, 83%);
+        transition: transform 200ms ease, opacity 400ms ease, background-color 400ms ease;
+        opacity: 0;
       }
-    </style>
-    <div style='display: flex; gap: 2rem; flex-direction: column; font-family: "Google Sans",Roboto,RobotoDraft,Helvetica,Arial,sans-serif;'>${activityDataList
-      .map((activityData, activityIndex) => {
-        return `
-    <div>
-    <h3>${activityData.name} (${metersToMiles(
-          activityData.distance
-        )} miles) - ${new Date(
-          activityData.start_date
-        ).toLocaleTimeString()}</h3>
-    ${
-      !!activityData.laps
-        ? `
-     <div style='display: flex; gap: 1rem; margin-bottom: .5rem;'>
-       <button class="tab-button active" id='tab-laps-${activityIndex}' onclick="switchTab(${activityIndex}, 'laps')">Laps (${
-            activityData.laps?.length ?? 0
-          })</button>
-       <button class="tab-button" id='tab-splits-${activityIndex}' onclick="switchTab(${activityIndex}, 'splits')">Splits (${
-            activityData.splits?.length ?? 0
-          })</button>
-     </div>
-     <div id='content-laps-${activityIndex}' class=''>
-       ${!activityData.laps ? "No lap data available." : ""}
-       ${
-         !!activityData.laps
-           ? `
-       <table style='width: 100%; border-spacing: 0;'>
-         <thead>
-           <tr style="text-align: center; background-color: #f7f7fa;">
-             <th>Lap</th>
-             <th>Distance</th>
-             <th>Time</th>
-             <th>Pace</th>
-             <th>Elevation Gain</th>
-             <th>HR</th>
-           </tr>
-         </thead>
-         ${activityData.laps
-           ?.map((lap, index) => {
-             return `<tr><td>${(index + 1).toString()}</td><td>${metersToMiles(
-               lap.distance
-             )}</td><td>${durationToTime(
-               lap.moving_time
-             )}</td><td>${speedToPace(lap.average_speed)}</td><td>${Math.round(
-               lap.total_elevation_gain * METERS_TO_FEET
-             )?.toFixed(1)} ft</td><td>${lap.average_heartrate?.toFixed(
-               1
-             )}</td></tr>`;
-           })
-           .join("\n")}
-       </table>`
-           : ""
+  
+      .tab-button:hover::after,
+      .tab-button.active::after {
+        transform: scale(1);
+        opacity: 1;
+      }
+  
+       .hidden {
+         display: none;
        }
-     </div>
-     <div id='content-splits-${activityIndex}' class="hidden">
-       ${!activityData.splits ? "No split data available." : ""}
-       ${
-         !!activityData.splits
-           ? `
- <table style='width: 100%; border-spacing: 0;'>
-         <thead>
-           <tr style="text-align: center; background-color: #f7f7fa;">
-             <th>Split</th>
-             <th>Distance</th>
-             <th>Time</th>
-             <th>Pace</th>
-             <th>Elevation Difference</th>
-             <th>HR</th>
-           </tr>
-         </thead>
-         ${activityData.splits
-           ?.map((lap, index) => {
-             return `<tr><td>${(index + 1).toString()}</td><td>${metersToMiles(
-               lap.distance
-             )}</td><td>${durationToTime(
-               lap.moving_time
-             )}</td><td>${speedToPace(lap.average_speed)}</td><td>${Math.round(
-               lap.elevation_difference * METERS_TO_FEET
-             )?.toFixed(1)} ft</td><td>${lap.average_heartrate?.toFixed(
-               1
-             )}</td></tr>`;
-           })
-           .join("\n")}
-       </table>`
-           : ``
+     
+       table td, table th {
+         padding: 6px 20px;
+         border-bottom: 1px solid #dfdfe8;
        }
-     </div>    
- `
-        : ""
-    }
-    </div>`;
-      })
-      .join("\n")}
-    </div>`
+     
+       table tr:last-child td {
+         border-bottom: none;
+       }
+     
+       table tr {
+         text-align: center;
+         font-size: 14px;
+       }
+     </style>
+     <div style='display: flex; gap: 2rem; flex-direction: column; font-family: "Google Sans",Roboto,RobotoDraft,Helvetica,Arial,sans-serif;'>${activityDataList
+       .map((activityData, activityIndex) => {
+         return `
+     <div>
+     <h3>${activityData.name} (${metersToMiles(
+           activityData.distance
+         )} miles) - ${new Date(
+           activityData.start_date
+         ).toLocaleTimeString()}</h3>
+     ${
+       !!activityData.laps
+         ? `
+      <div style='display: flex; gap: 1rem; margin-bottom: .5rem;'>
+        <button class="tab-button active" id='tab-laps-${activityIndex}' onclick="switchTab(${activityIndex}, 'laps')">Laps (${
+             activityData.laps?.length ?? 0
+           })</button>
+        <button class="tab-button" id='tab-splits-${activityIndex}' onclick="switchTab(${activityIndex}, 'splits')">Splits (${
+             activityData.splits?.length ?? 0
+           })</button>
+      </div>
+      <div id='content-laps-${activityIndex}' class=''>
+        ${!activityData.laps ? "No lap data available." : ""}
+        ${
+          !!activityData.laps
+            ? `
+        <table style='width: 100%; border-spacing: 0;'>
+          <thead>
+            <tr style="text-align: center; background-color: #f7f7fa;">
+              <th>Lap</th>
+              <th>Distance</th>
+              <th>Time</th>
+              <th>Pace</th>
+              <th>Elevation Gain</th>
+              <th>HR</th>
+            </tr>
+          </thead>
+          ${activityData.laps
+            ?.map((lap, index) => {
+              return `<tr><td>${(index + 1).toString()}</td><td>${metersToMiles(
+                lap.distance
+              )}</td><td>${durationToTime(
+                lap.moving_time
+              )}</td><td>${speedToPace(lap.average_speed)}</td><td>${Math.round(
+                lap.total_elevation_gain * METERS_TO_FEET
+              )?.toFixed(1)} ft</td><td>${lap.average_heartrate?.toFixed(
+                1
+              )}</td></tr>`;
+            })
+            .join("\n")}
+        </table>`
+            : ""
+        }
+      </div>
+      <div id='content-splits-${activityIndex}' class="hidden">
+        ${!activityData.splits ? "No split data available." : ""}
+        ${
+          !!activityData.splits
+            ? `
+  <table style='width: 100%; border-spacing: 0;'>
+          <thead>
+            <tr style="text-align: center; background-color: #f7f7fa;">
+              <th>Split</th>
+              <th>Distance</th>
+              <th>Time</th>
+              <th>Pace</th>
+              <th>Elevation Difference</th>
+              <th>HR</th>
+            </tr>
+          </thead>
+          ${activityData.splits
+            ?.map((lap, index) => {
+              return `<tr><td>${(index + 1).toString()}</td><td>${metersToMiles(
+                lap.distance
+              )}</td><td>${durationToTime(
+                lap.moving_time
+              )}</td><td>${speedToPace(lap.average_speed)}</td><td>${Math.round(
+                lap.elevation_difference * METERS_TO_FEET
+              )?.toFixed(1)} ft</td><td>${lap.average_heartrate?.toFixed(
+                1
+              )}</td></tr>`;
+            })
+            .join("\n")}
+        </table>`
+            : ``
+        }
+      </div>
+  `
+         : ""
+     }
+     </div>`;
+       })
+       .join("\n")}
+     </div>`
   )
     .setWidth(900)
     .setHeight(500);
@@ -400,7 +400,9 @@ function updateSheet(suppliedSheet) {
       try {
         updateLogin();
       } catch (e) {
-        Logger.log(`Error initializing login set for ${sheet.getName()} (was this run by automation?): ${e}`);
+        Logger.log(
+          `Error initializing login set for ${sheet.getName()} (was this run by automation?): ${e}`
+        );
         return;
       }
     }
@@ -494,13 +496,22 @@ function updateSheet(suppliedSheet) {
     parsedDataRows[lastRowIndexMissingData][trackedColumns.Date]
   );
 
+  // Get current date end of day.
+  var today = new Date();
+  today.setHours(23, 59, 59, 999);
+
+  // Get last two weeks date start of day.
+  var lastTwoWeeks = new Date();
+  lastTwoWeeks.setDate(lastTwoWeeks.getDate() - 14);
+  lastTwoWeeks.setHours(0, 0, 0, 0);
+
   var activities;
 
   try {
     Logger.log(
-      `Getting Strava activities between ${firstRowDate.toLocaleDateString()} to ${lastRowDate.toLocaleDateString()}`
+      `Getting Strava activities between ${lastTwoWeeks.toLocaleDateString()} to ${today.toLocaleDateString()}`
     );
-    activities = getStravaActiviesInRange(service, firstRowDate, lastRowDate);
+    activities = getStravaActiviesInRange(service, lastTwoWeeks, today);
     Logger.log(`Got ${activities.length} activities.`);
   } catch (e) {
     var html = HtmlService.createHtmlOutput(`An error has occurred. ${e}`)
@@ -640,7 +651,9 @@ function updateSheet(suppliedSheet) {
           (!!rawData ? JSON.parse(rawData).length : 0)
             ? apiRequests <= MAX_API_REQUESTS
               ? aggregateData.activityIds.map((activityId) => {
-                  Logger.log(`Getting activity data for Activity ID: ${activityId} on ${dateKey}`);
+                  Logger.log(
+                    `Getting activity data for Activity ID: ${activityId} on ${dateKey}`
+                  );
                   return getActivityData(service, activityId);
                 })
               : undefined
