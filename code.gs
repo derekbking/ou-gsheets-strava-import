@@ -149,7 +149,7 @@ function createTriggerOdd() {
 }
 
 function viewSplits() {
-  const [colNameToIndex, indexToColName] = getColumnMap(false);
+  const [colNameToIndex, indexToColName] = getColumnMap(true);
   const cell = sheet.getActiveCell();
   const activityDataList = JSON.parse(
     getCellData(
@@ -410,7 +410,7 @@ function updateSheet(suppliedSheet) {
   }
 
   Logger.log("Getting column indexes...");
-  const [colNameToIndex, indexToColName] = getColumnMap(true);
+  const [colNameToIndex, indexToColName] = getColumnMap(false);
 
   Logger.log(Array.from(colNameToIndex.entries()));
 
