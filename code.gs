@@ -17,6 +17,12 @@ const SUMMER_START_DAY = 12;
 const SUMMER_END_MONTH = 8;
 const SUMMER_END_DAY = 15;
 
+const WINTER_START_MONTH = 12;
+const WINTER_START_DAY = 11;
+
+const WINTER_END_MONTH = 1;
+const WINTER_END_DAY = 11;
+
 const SHEETS_EXEMPT_FROM_OFF_DAYS = ["Derek"];
 
 const colors = {
@@ -588,10 +594,20 @@ function updateSheet(suppliedSheet) {
       var isSummerDay =
         currentDay.getTime() >= startSummerDate.getTime() &&
         currentDay.getTime() <= endSummerDate.getTime();
+
+      // Check if currentDay date is past December 11th.
+      const isWinterEnd =
+        currentDay.getMonth() >= WINTER_START_MONTH - 1 &&
+        currentDay.getDate() >= WINTER_START_DAY;
+      const isWinterStart =
+        currentDay.getMonth() <= WINTER_END_MONTH - 1 &&
+        currentDay.getDate() <= WINTER_END_DAY;
+      const isWinterDay = isWinterEnd || isWinterStart;
+
       var isOffDay =
         sheetData.color == colors.Off || sheetData.color == colors.Off2;
       if (
-        (isSummerDay || isOffDay) &&
+        (isSummerDay || isOffDay || isWinterDay) &&
         !SHEETS_EXEMPT_FROM_OFF_DAYS.includes(sheet.getName())
       ) {
         for (let key of Object.values(trackedColumns)) {
@@ -605,7 +621,7 @@ function updateSheet(suppliedSheet) {
         Logger.log(
           `Clearing data for ${dateKey}. ${
             isOffDay ? "Off day detected." : ""
-          }${isSummerDay ? "Summer day detected." : ""}.`
+          }${isSummerDay ? "Summer day detected." : isWinterDay ? "Winter day detected." : ""}.`
         );
         return;
       }
